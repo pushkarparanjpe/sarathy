@@ -3,6 +3,7 @@
 `Sarathy` is a command-line agentic AI assistant designed to help developers directly in their terminal. It provides a polished, interactive Claude Code-like experience, allowing users to ask coding questions, write files, edit code block-by-block, and run commands.
 
 Developed with **Sarvam AI** in mind, Sarathy utilizes agentic tool-calling to research, modify, test, and repair your codebase autonomously, all under your control.
+![Sarathy CLI Demo](docs/sarathy_cli.png)
 
 ---
 
@@ -17,14 +18,15 @@ Developed with **Sarvam AI** in mind, Sarathy utilizes agentic tool-calling to r
 
 ---
 
-## 🛠️ Tech Stack & Prerequisites
+## 📋 Prerequisites
 
-Sarathy is written in Python and is highly optimized using modern packaging tools:
-- **Python**: `>=3.9`
-- **uv**: Modern, lightning-fast Python package manager (recommended).
-- **openai**: OpenAI-compatible client library for interacting with the LLM API.
-- **rich**: Modern terminal styling, markdown rendering, and dynamic spinners.
-- **prompt-toolkit**: Advanced terminal command-line prompt handling with syntax suggestions.
+### 1. Obtain a Sarvam AI Developer API Key
+Sarathy requires a Sarvam AI API Key to run. Follow these steps to obtain one:
+1. Go to the [Sarvam AI Developer Dashboard](https://dashboard.sarvam.ai/).
+2. Sign up to create a new account, or log in if you already have one.
+3. Once logged in, navigate to the **API Keys** section.
+4. Click **Create New Key** to generate your API key.
+5. Copy the generated key and store it securely (you will use it to configure Sarathy below).
 
 ---
 
