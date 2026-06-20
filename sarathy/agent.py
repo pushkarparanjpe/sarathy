@@ -11,7 +11,8 @@ class Agent:
         self.llm_client = LLMClient(
             api_key=config.api_key,
             api_base=config.api_base,
-            model=config.model
+            model=config.model,
+            reasoning_effort=config.reasoning_effort
         )
         self.history: List[Dict[str, Any]] = []
         self.reset_history()
@@ -26,7 +27,8 @@ class Agent:
         self.llm_client = LLMClient(
             api_key=config.api_key,
             api_base=config.api_base,
-            model=config.model
+            model=config.model,
+            reasoning_effort=config.reasoning_effort
         )
 
     def run_turn(

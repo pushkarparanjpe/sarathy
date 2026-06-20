@@ -3,9 +3,10 @@ from openai import OpenAI
 from typing import List, Dict, Any, Generator, Tuple
 
 class LLMClient:
-    def __init__(self, api_key: str, api_base: str, model: str):
+    def __init__(self, api_key: str, api_base: str, model: str, reasoning_effort: str = "medium"):
         self.client = OpenAI(api_key=api_key, base_url=api_base)
         self.model = model
+        self.reasoning_effort = reasoning_effort
 
     def chat_stream(
         self, 
@@ -26,6 +27,10 @@ class LLMClient:
                 "stream": True,
                 "stream_options": {"include_usage": True},
             }
+            if "105b" in self.model.lower():
+                # Pass reasoning_effort parameter (which can be "low", "medium", "high", or None)
+                # But to make sure None is serialized as null in JSON request body, we just set it.
+                kwargs["reasoning_effort"] = self.reasoning_effort
             if tools:
                 kwargs["tools"] = tools
 

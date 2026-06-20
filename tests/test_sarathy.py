@@ -224,3 +224,25 @@ def test_get_model_details():
     assert output_rate == 16.0
     assert cached_rate == 2.5
     assert symbol == "₹"
+
+def test_reasoning_effort_config():
+    # Test that reasoning_effort defaults to 'medium'
+    cfg = Config()
+    assert cfg.reasoning_effort == "medium"
+    
+    # Test setting via constructor
+    cfg_low = Config(reasoning_effort="low")
+    assert cfg_low.reasoning_effort == "low"
+    
+    # Test setting via environment variable
+    os.environ["SARVAM_REASONING_EFFORT"] = "high"
+    cfg_env = Config()
+    assert cfg_env.reasoning_effort == "high"
+    os.environ.pop("SARVAM_REASONING_EFFORT", None)
+
+    # Test "none" string conversion to None
+    cfg_none = Config(reasoning_effort="none")
+    assert cfg_none.reasoning_effort is None
+
+    cfg_none_direct = Config(reasoning_effort=None)
+    assert cfg_none_direct.reasoning_effort is None

@@ -50,11 +50,13 @@ def prompt_for_api_key(config: Config):
 
 
 class TopToolbar(Static):
-    """Top Toolbar widget displaying model, vendor, and token rates."""
-    def update_info(self, vendor: str, model: str, in_rate: float, out_rate: float, ca_rate: float, sym: str):
+    """Top Toolbar widget displaying model, vendor, token rates, and reasoning effort."""
+    def update_info(self, vendor: str, model: str, in_rate: float, out_rate: float, ca_rate: float, sym: str, effort: str):
+        effort_display = str(effort).upper() if effort is not None else "NONE"
         self.update(
             f"Vendor: [bold #c678dd]{vendor.upper()}[/bold #c678dd] │ "
             f"Model: [bold #e5c07b]{model}[/bold #e5c07b] │ "
+            f"Effort: [bold cyan]{effort_display}[/bold cyan] │ "
             f"Pricing (per 1M): In: [bold #98c379]{sym}{in_rate:.1f}[/bold #98c379], Out: [bold #98c379]{sym}{out_rate:.1f}[/bold #98c379], Cached: [bold #98c379]{sym}{ca_rate:.1f}[/bold #98c379]"
         )
 
@@ -133,6 +135,11 @@ class ToolConfirmWidget(Static):
 
 class SarathyApp(App):
     """Main Textual TUI Application for Sarathy Assistant."""
+    
+    BINDINGS = [
+        ("ctrl+e", "toggle_effort", "Cycle reasoning effort"),
+        ("f2", "toggle_effort", "Cycle reasoning effort"),
+    ]
     
     CSS = """
     Screen {
@@ -269,6 +276,7 @@ class SarathyApp(App):
 
     def get_welcome_banner_text(self) -> str:
         """Returns startup banner text similar to print_welcome_banner."""
+        effort_display = str(self.config.reasoning_effort).upper() if self.config.reasoning_effort is not None else "NONE"
         return (
             "[bold magenta]"
             "███████╗ █████╗ ██████╗  █████╗ ████████╗██╗  ██╗██╗   ██╗\n"
@@ -280,16 +288,39 @@ class SarathyApp(App):
             "[/bold magenta]\n"
             f"  [bold]Sarathy[/bold] - Agentic AI Coding Assistant for Developers\n"
             f"  Workspace: [green]{os.getcwd()}[/green]\n"
-            f"  Model:     [yellow]{self.config.model}[/yellow]\n"
-            f"  Endpoint:  [blue]{self.config.api_base}[/blue]\n"
-            f"  Auto-Approve: {'[red]Enabled[/red]' if self.config.auto_approve else '[green]Disabled (Prompting for modifications)[/green]'}\n\n"
+            f"  Model:            [yellow]{self.config.model}[/yellow]\n"
+            f"  Reasoning Effort: [cyan]{effort_display}[/cyan]\n"
+            f"  Endpoint:         [blue]{self.config.api_base}[/blue]\n"
+            f"  Auto-Approve:     {'[red]Enabled[/red]' if self.config.auto_approve else '[green]Disabled (Prompting for modifications)[/green]'}\n\n"
             "  Type [bold cyan]/help[/bold cyan] for commands, [bold cyan]!<cmd>[/bold cyan] for direct shell execution, or [bold]/exit[/bold] to quit."
         )
 
     def update_top_toolbar(self) -> None:
         from sarathy.pricing import get_model_details
         vendor, in_rate, out_rate, ca_rate, sym = get_model_details(self.config.model)
-        self.query_one(TopToolbar).update_info(vendor, self.config.model, in_rate, out_rate, ca_rate, sym)
+        self.query_one(TopToolbar).update_info(
+            vendor, self.config.model, in_rate, out_rate, ca_rate, sym, self.config.reasoning_effort
+        )
+
+    def action_toggle_effort(self) -> None:
+        """Cycles the reasoning effort level between None, 'low', 'medium', and 'high'."""
+        efforts = [None, "low", "medium", "high"]
+        current = self.config.reasoning_effort
+        try:
+            idx = efforts.index(current)
+        except ValueError:
+            idx = 2  # default to medium
+        next_idx = (idx + 1) % len(efforts)
+        new_effort = efforts[next_idx]
+        
+        self.config.reasoning_effort = new_effort
+        self.config.save()
+        self.agent.update_config(self.config)
+        self.update_top_toolbar()
+        
+        # Log system message to notify user of the change
+        effort_str = str(new_effort).upper() if new_effort is not None else "NONE"
+        self.append_system_message(f"Reasoning effort set to: [bold cyan]{effort_str}[/bold cyan]")
 
     def calculate_cost(self, prompt: int, completion: int, cached: int):
         input_rate, output_rate, cached_rate, symbol = get_pricing_for_model(self.config.model)
@@ -467,18 +498,21 @@ class SarathyApp(App):
             "  [bold cyan]/model <name>[/bold cyan] Switch LLM model (e.g. /model sarvam-105b)\n"
             "  [bold cyan]/status[/bold cyan]        Display current configuration status\n"
             "  [bold cyan]/exit, /quit[/bold cyan]  Exit the assistant\n"
-            "  [bold cyan]!<command>[/bold cyan]    Execute a shell command interactively (e.g., !pytest)"
+            "  [bold cyan]!<command>[/bold cyan]    Execute a shell command interactively (e.g., !pytest)\n"
+            "  [bold cyan]ctrl+e / f2[/bold cyan]    Cycle reasoning effort (None/low/medium/high)"
         )
         self.append_system_message(help_text)
 
     def show_status(self) -> None:
         last_cost, last_sym = self.calculate_cost(self.last_turn_prompt_tokens, self.last_turn_completion_tokens, self.last_turn_cached_tokens)
         session_cost, session_sym = self.calculate_cost(self.session_prompt_tokens, self.session_completion_tokens, self.session_cached_tokens)
+        effort_display = str(self.config.reasoning_effort).upper() if self.config.reasoning_effort is not None else "NONE"
         
         status_text = (
             "[bold magenta]Configuration Status:[/bold magenta]\n\n"
             f"  Workspace: [green]{os.getcwd()}[/green]\n"
             f"  Active Model: [yellow]{self.config.model}[/yellow]\n"
+            f"  Reasoning Effort: [cyan]{effort_display}[/cyan]\n"
             f"  Endpoint: [blue]{self.config.api_base}[/blue]\n"
             f"  API Key Set: {'[green]Yes[/green]' if self.config.api_key else '[red]No[/red]'} (ends in ...{self.config.api_key[-4:] if len(self.config.api_key) > 4 else ''})\n"
             f"  Auto-Approve: {'[red]Enabled[/red]' if self.config.auto_approve else '[green]Disabled[/green]'} (-y flag to enable)\n"
