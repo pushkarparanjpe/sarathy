@@ -1,6 +1,7 @@
 import os
 import sys
 import argparse
+import shutil
 from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
@@ -13,6 +14,7 @@ from prompt_toolkit.styles import Style
 
 from sarathy.config import Config
 from sarathy.agent import Agent
+from sarathy.pricing import get_pricing_for_model
 
 # Initialize Rich Console
 console = Console()
@@ -21,6 +23,8 @@ console = Console()
 prompt_style = Style.from_dict({
     "prompt": "bold cyan",
     "workspace": "green",
+    "bottom-toolbar": "bg:#2c2c2c fg:#abb2bf",
+    "bottom-toolbar.value": "bold fg:#61afef",
 })
 
 def print_welcome_banner(config: Config):
@@ -158,6 +162,18 @@ def main():
     # Initialize Agent
     agent = Agent(config)
 
+    # Session token usage tracking
+    session_prompt_tokens = 0
+    session_completion_tokens = 0
+    session_total_tokens = 0
+    session_cached_tokens = 0
+
+    # Last turn token usage tracking
+    last_turn_prompt_tokens = 0
+    last_turn_completion_tokens = 0
+    last_turn_total_tokens = 0
+    last_turn_cached_tokens = 0
+
     # Welcome banner
     print_welcome_banner(config)
 
@@ -171,6 +187,23 @@ def main():
         auto_suggest=AutoSuggestFromHistory()
     )
 
+    def calculate_cost(prompt, completion, cached):
+        input_rate, output_rate, cached_rate, symbol = get_pricing_for_model(config.model)
+        non_cached_prompt = max(0, prompt - cached)
+        cost = (non_cached_prompt * input_rate + completion * output_rate + cached * cached_rate) / 1000000.0
+        return cost, symbol
+
+    def get_toolbar():
+        session_cost, session_sym = calculate_cost(session_prompt_tokens, session_completion_tokens, session_cached_tokens)
+        last_cost, last_sym = calculate_cost(last_turn_prompt_tokens, last_turn_completion_tokens, last_turn_cached_tokens)
+        return [
+            ("class:bottom-toolbar", " Last Command: "),
+            ("class:bottom-toolbar.value", f"{last_sym}{last_cost:.2f}"),
+            ("class:bottom-toolbar", f" ({last_turn_total_tokens} t) | Session Total: "),
+            ("class:bottom-toolbar.value", f"{session_sym}{session_cost:.2f}"),
+            ("class:bottom-toolbar", f" ({session_total_tokens} t)"),
+        ]
+
     # Main TUI Loop
     while True:
         try:
@@ -183,7 +216,11 @@ def main():
                 ("class:prompt", ") > "),
             ]
 
-            user_input = session.prompt(prompt_message, style=prompt_style)
+            user_input = session.prompt(
+                prompt_message,
+                style=prompt_style,
+                bottom_toolbar=get_toolbar
+            )
             user_input = user_input.strip()
 
             if not user_input:
@@ -216,12 +253,16 @@ def main():
                         console.print(f"[green]Switched model to: {config.model}[/green]")
                     continue
                 elif cmd == "/status":
+                    last_cost, last_sym = calculate_cost(last_turn_prompt_tokens, last_turn_completion_tokens, last_turn_cached_tokens)
+                    session_cost, session_sym = calculate_cost(session_prompt_tokens, session_completion_tokens, session_cached_tokens)
                     console.print(Panel(
                         f"Workspace: [green]{os.getcwd()}[/green]\n"
                         f"Active Model: [yellow]{config.model}[/yellow]\n"
                         f"Endpoint: [blue]{config.api_base}[/blue]\n"
                         f"API Key Set: {'[green]Yes[/green]' if config.api_key else '[red]No[/red]'} (ends in ...{config.api_key[-4:] if len(config.api_key) > 4 else ''})\n"
-                        f"Auto-Approve: {'[red]Enabled[/red]' if config.auto_approve else '[green]Disabled[/green]'} (-y flag to enable)",
+                        f"Auto-Approve: {'[red]Enabled[/red]' if config.auto_approve else '[green]Disabled[/green]'} (-y flag to enable)\n"
+                        f"Last Command Usage: [cyan]{last_sym}{last_cost:.2f}[/cyan] ({last_turn_total_tokens} tokens)\n"
+                        f"Session Usage: [cyan]{session_sym}{session_cost:.2f}[/cyan] ({session_total_tokens} tokens)",
                         title="Configuration Status",
                         border_style="magenta"
                     ))
@@ -244,6 +285,12 @@ def main():
             # Print a blank line before response
             console.print()
             
+            # Turn token usage tracking
+            turn_prompt_tokens = 0
+            turn_completion_tokens = 0
+            turn_total_tokens = 0
+            turn_cached_tokens = 0
+            
             with Status("[bold green]Thinking...", console=console, spinner="dots") as status:
                 generator = agent.run_turn(user_input, handle_tool_confirm)
                 
@@ -257,6 +304,21 @@ def main():
                     elif event == "text_chunk":
                         # Print assistant token stream directly to console
                         console.print(data, end="")
+                    elif event == "usage":
+                        p_toks = data.get("prompt_tokens", 0)
+                        c_toks = data.get("completion_tokens", 0)
+                        t_toks = data.get("total_tokens", 0)
+                        ca_toks = data.get("cached_tokens", 0)
+                        
+                        turn_prompt_tokens += p_toks
+                        turn_completion_tokens += c_toks
+                        turn_total_tokens += t_toks
+                        turn_cached_tokens += ca_toks
+                        
+                        session_prompt_tokens += p_toks
+                        session_completion_tokens += c_toks
+                        session_total_tokens += t_toks
+                        session_cached_tokens += ca_toks
                     elif event == "tool_request":
                         status.stop()
                         name, args = data
@@ -280,6 +342,13 @@ def main():
             
             # Print an ending line
             console.print("\n")
+
+            # Update last command usage tracking
+            if turn_total_tokens > 0:
+                last_turn_prompt_tokens = turn_prompt_tokens
+                last_turn_completion_tokens = turn_completion_tokens
+                last_turn_total_tokens = turn_total_tokens
+                last_turn_cached_tokens = turn_cached_tokens
 
         except KeyboardInterrupt:
             # Control-C resets the line or exits clean if empty

@@ -81,3 +81,127 @@ def test_execute_tool_dispatch(tmp_path):
 
     res_view = execute_tool("view_file", {"path": str(test_file)})
     assert "dispatched content" in res_view
+
+
+def test_llm_client_yields_usage():
+    from unittest.mock import MagicMock, patch
+    
+    mock_openai = MagicMock()
+    
+    class MockDelta:
+        content = "Hello"
+        tool_calls = None
+        
+    class MockChoice:
+        delta = MockDelta()
+        finish_reason = None
+        index = 0
+        
+    class MockChunk:
+        def __init__(self, choices, usage=None):
+            self.choices = choices
+            self.usage = usage
+            
+    mock_chunk_1 = MockChunk(choices=[MockChoice()])
+    
+    class MockPromptTokensDetails:
+        cached_tokens = 3
+    
+    class MockUsage:
+        prompt_tokens = 10
+        completion_tokens = 5
+        total_tokens = 15
+        prompt_tokens_details = MockPromptTokensDetails()
+        
+    mock_chunk_2 = MockChunk(choices=[], usage=MockUsage())
+    
+    mock_openai.chat.completions.create.return_value = [mock_chunk_1, mock_chunk_2]
+    
+    with patch("sarathy.llm.OpenAI", return_value=mock_openai):
+        from sarathy.llm import LLMClient
+        client = LLMClient(api_key="dummy", api_base="dummy", model="dummy")
+        
+        events = list(client.chat_stream(messages=[]))
+        
+        # Verify content was yielded
+        assert ("content", "Hello") in events
+        # Verify usage was yielded
+        assert ("usage", {
+            "prompt_tokens": 10,
+            "completion_tokens": 5,
+            "total_tokens": 15,
+            "cached_tokens": 3
+        }) in events
+
+
+def test_agent_run_turn_propagates_usage():
+    from unittest.mock import MagicMock, patch
+    
+    mock_openai = MagicMock()
+    
+    class MockDelta:
+        content = "Hi"
+        tool_calls = None
+        
+    class MockChoice:
+        delta = MockDelta()
+        
+    class MockChunk:
+        def __init__(self, choices, usage=None):
+            self.choices = choices
+            self.usage = usage
+            
+    class MockPromptTokensDetails:
+        cached_tokens = 4
+            
+    class MockUsage:
+        prompt_tokens = 20
+        completion_tokens = 8
+        total_tokens = 28
+        prompt_tokens_details = MockPromptTokensDetails()
+        
+    mock_openai.chat.completions.create.return_value = [
+        MockChunk(choices=[MockChoice()]),
+        MockChunk(choices=[], usage=MockUsage())
+    ]
+    
+    with patch("sarathy.llm.OpenAI", return_value=mock_openai):
+        from sarathy.agent import Agent
+        from sarathy.config import Config
+        
+        config = Config(api_key="dummy")
+        agent = Agent(config)
+        
+        events = list(agent.run_turn("hello", confirm_callback=lambda x, y: False))
+        
+        assert ("usage", {
+            "prompt_tokens": 20,
+            "completion_tokens": 8,
+            "total_tokens": 28,
+            "cached_tokens": 4
+        }) in events
+
+
+def test_get_pricing_for_model():
+    from sarathy.pricing import get_pricing_for_model
+    
+    # Test valid model
+    input_rate, output_rate, cached_rate, symbol = get_pricing_for_model("sarvam-105b")
+    assert input_rate == 4.0
+    assert output_rate == 16.0
+    assert cached_rate == 2.5
+    assert symbol == "₹"
+    
+    # Test case insensitivity and padding
+    input_rate, output_rate, cached_rate, symbol = get_pricing_for_model("  SARVAM-105b  ")
+    assert input_rate == 4.0
+    assert output_rate == 16.0
+    assert cached_rate == 2.5
+    assert symbol == "₹"
+    
+    # Test fallback to defaults
+    input_rate, output_rate, cached_rate, symbol = get_pricing_for_model("unknown-model")
+    assert input_rate == 4.0
+    assert output_rate == 16.0
+    assert cached_rate == 2.5
+    assert symbol == "₹"

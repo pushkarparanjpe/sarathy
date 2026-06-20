@@ -24,6 +24,7 @@ class LLMClient:
                 "model": self.model,
                 "messages": messages,
                 "stream": True,
+                "stream_options": {"include_usage": True},
             }
             if tools:
                 kwargs["tools"] = tools
@@ -35,6 +36,31 @@ class LLMClient:
             active_tool_calls = {}
 
             for chunk in response:
+                if hasattr(chunk, "usage") and chunk.usage is not None:
+                    u = chunk.usage
+                    if isinstance(u, dict):
+                        prompt_details = u.get("prompt_tokens_details") or {}
+                        cached_tokens = 0
+                        if isinstance(prompt_details, dict):
+                            cached_tokens = prompt_details.get("cached_tokens", 0) or 0
+                        else:
+                            cached_tokens = getattr(prompt_details, "cached_tokens", 0) or 0
+                        yield "usage", {
+                            "prompt_tokens": u.get("prompt_tokens", 0),
+                            "completion_tokens": u.get("completion_tokens", 0),
+                            "total_tokens": u.get("total_tokens", 0),
+                            "cached_tokens": cached_tokens
+                        }
+                    else:
+                        prompt_details = getattr(u, "prompt_tokens_details", None)
+                        cached_tokens = getattr(prompt_details, "cached_tokens", 0) or 0 if prompt_details else 0
+                        yield "usage", {
+                            "prompt_tokens": getattr(u, "prompt_tokens", 0) or 0,
+                            "completion_tokens": getattr(u, "completion_tokens", 0) or 0,
+                            "total_tokens": getattr(u, "total_tokens", 0) or 0,
+                            "cached_tokens": cached_tokens
+                        }
+
                 if not chunk.choices:
                     continue
                 

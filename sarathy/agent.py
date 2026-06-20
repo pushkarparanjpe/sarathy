@@ -44,6 +44,7 @@ class Agent:
         - ("tool_executing", tool_name) - tool execution started
         - ("tool_result", (tool_name, result)) - tool finished with result
         - ("error", str) - error message
+        - ("usage", dict) - token usage dict
         """
         self.history.append({"role": "user", "content": user_input})
         
@@ -71,6 +72,8 @@ class Agent:
                     yield "thinking_end", None
                     error_occurred = data
                     yield "error", data
+                elif event_type == "usage":
+                    yield "usage", data
 
             if error_occurred:
                 break
