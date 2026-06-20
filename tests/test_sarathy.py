@@ -205,3 +205,22 @@ def test_get_pricing_for_model():
     assert output_rate == 16.0
     assert cached_rate == 2.5
     assert symbol == "₹"
+
+def test_get_model_details():
+    from sarathy.pricing import get_model_details
+    
+    # Test valid model
+    vendor, input_rate, output_rate, cached_rate, symbol = get_model_details("sarvam-105b")
+    assert vendor == "sarvam"
+    assert input_rate == 4.0
+    assert output_rate == 16.0
+    assert cached_rate == 2.5
+    assert symbol == "₹"
+    
+    # Test fallback to defaults
+    vendor, input_rate, output_rate, cached_rate, symbol = get_model_details("unknown-model")
+    assert vendor == "sarvam"
+    assert input_rate == 4.0
+    assert output_rate == 16.0
+    assert cached_rate == 2.5
+    assert symbol == "₹"

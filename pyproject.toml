@@ -9,6 +9,7 @@ dependencies = [
     "prompt-toolkit>=3.0.52",
     "python-dotenv>=1.2.1",
     "rich>=15.0.0",
+    "textual>=8.2.7",
 ]
 
 [project.scripts]
